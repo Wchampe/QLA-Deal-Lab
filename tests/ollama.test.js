@@ -1,0 +1,18 @@
+'use strict';
+const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+const {createClient}=require('../ollama-client');
+function setup(t,settings={}){
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'qla-ollama-test-')),configFile=path.join(dir,'ollama.json');
+ t.after(()=>{for(const file of [configFile,configFile+'.tmp'])if(fs.existsSync(file))fs.unlinkSync(file);fs.rmdirSync(dir);});
+ let names=['deepseek-r1:14b','qwen38-local:latest'],failure=false;
+ const options={configFile,model:'',fetch:async(url,opts)=>{assert.equal(url,'http://127.0.0.1:11434/api/tags');assert.ok(opts.signal);if(failure)throw Error('refused');return Response.json({models:names.map(name=>({name}))});},...settings};
+ return {client:createClient(options),options,configFile,names:value=>{names=value;},offline:value=>{failure=value;}};
+}
+test('discovers installed models and prefers Qwen without an environment setting',async t=>{const {client}=setup(t),s=await client.status();assert.equal(s.connected,true);assert.equal(s.ready,true);assert.equal(s.model,'qwen38-local:latest');assert.equal(s.models.length,2);assert.equal(await client.requireModel(),s.model);});
+test('refresh reflects installed models and falls back only when no choice was configured',async t=>{const x=setup(t);x.names(['deepseek-r1:14b']);assert.equal((await x.client.status()).model,'deepseek-r1:14b');x.names([]);const empty=await x.client.status();assert.equal(empty.connected,true);assert.equal(empty.ready,false);assert.match(empty.error,/no installed models/);});
+test('missing selected model fails clearly instead of claiming readiness',async t=>{const {client}=setup(t,{model:'missing:latest'}),s=await client.status();assert.equal(s.connected,true);assert.equal(s.ready,false);assert.equal(s.model,'missing:latest');await assert.rejects(client.requireModel(),/not installed/);});
+test('untagged model preferences resolve to the installed latest tag',async t=>{const {client}=setup(t,{model:'qwen38-local'});assert.equal(await client.requireModel(),'qwen38-local:latest');});
+test('selection persists across restarts and an explicit startup model overrides it',async t=>{const x=setup(t);const selected=await x.client.selectModel('deepseek-r1:14b');assert.equal(selected.model,'deepseek-r1:14b');assert.equal(selected.ready,true);assert.equal(JSON.parse(fs.readFileSync(x.configFile,'utf8')).model,'deepseek-r1:14b');assert.equal(await createClient(x.options).requireModel(),'deepseek-r1:14b');assert.equal(await createClient({...x.options,model:'qwen38-local:latest'}).requireModel(),'qwen38-local:latest');});
+test('unknown models and malformed values cannot replace a saved preference',async t=>{const x=setup(t);await x.client.selectModel('deepseek-r1:14b');for(const bad of ['',null,{},'../unknown','x'.repeat(201)])await assert.rejects(x.client.selectModel(bad));assert.equal(await x.client.requireModel(),'deepseek-r1:14b');});
+test('offline model server clears readiness and refresh recovers',async t=>{const x=setup(t);assert.equal((await x.client.status()).ready,true);x.offline(true);const s=await x.client.status();assert.equal(s.connected,false);assert.equal(s.ready,false);assert.deepEqual(s.models,[]);assert.match(s.error,/Cannot reach Ollama/);await assert.rejects(x.client.requireModel(),/Cannot reach Ollama/);x.offline(false);assert.equal((await x.client.status()).ready,true);});
+test('HTTP and malformed-list failures do not masquerade as a ready model',async t=>{for(const fetch of [async()=>new Response('',{status:503}),async()=>Response.json({unexpected:[]})]){const {client}=setup(t,{fetch});const s=await client.status();assert.equal(s.ready,false);assert.ok(s.error);}});

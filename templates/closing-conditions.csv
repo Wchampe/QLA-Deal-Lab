@@ -1,0 +1,6 @@
+Condition ID,Condition,Responsible party,Required evidence,Due date,Status,Reviewer,Review date,Blocking dependencies
+CLOSE-001,Debt and equity commitments verified,[Owner],[Commitment references],[Date],Open,[Reviewer],[Date],[Dependencies]
+CLOSE-002,Required consents and transfer approvals,[Counsel],[Consent references],[Date],Open,[Reviewer],[Date],[Dependencies]
+CLOSE-003,Final sources uses and payoff reconciliation,[Counsel and lender],[Closing statement],[Date],Open,[Reviewer],[Date],[Dependencies]
+CLOSE-004,Payment instructions independently confirmed,[Authorized signer],[Known-channel verification log],[Date],Open,[Reviewer],[Date],[Dependencies]
+CLOSE-005,Executed documents and ownership transfer confirmed,[Counsel],[Closing set],[Date],Open,[Reviewer],[Date],[Dependencies]

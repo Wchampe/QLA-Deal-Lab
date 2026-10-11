@@ -1,0 +1,26 @@
+'use strict';
+const test=require('node:test'),assert=require('node:assert/strict'),http=require('node:http'),S=require('../server');
+const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),{createClient}=require('../ollama-client');
+const dir=fs.mkdtempSync(path.join(os.tmpdir(),'qla-ollama-http-')),configFile=path.join(dir,'ollama.json');
+const ollama=createClient({configFile,model:'qwen38-local:latest',fetch:async()=>Response.json({models:[{name:'qwen38-local:latest'},{name:'deepseek-r1:14b'}]})});
+const s=S.createServer({ollama});let port;
+test.before(async()=>{await new Promise(resolve=>s.listen(0,'127.0.0.1',resolve));port=s.address().port;});
+test.after(async()=>{await new Promise(resolve=>s.close(resolve));if(fs.existsSync(configFile))fs.unlinkSync(configFile);fs.rmdirSync(dir);});
+function req(url,method='GET',body=null,extra={}){return new Promise((ok,no)=>{const data=body==null?'':JSON.stringify(body);const r=http.request({hostname:'127.0.0.1',port,path:url,method,headers:{Host:'127.0.0.1:8765',Origin:'http://127.0.0.1:8765','Content-Type':'application/json','Content-Length':Buffer.byteLength(data),...extra}},res=>{let out='';res.on('data',c=>out+=c);res.on('end',()=>ok({status:res.statusCode,body:out,headers:res.headers}));});r.on('error',no);r.end(data);});}
+test('serves app and workflow scripts',async()=>{assert.equal((await req('/')).status,200);assert.equal((await req('/workflow-data.js')).status,200);assert.equal((await req('/workflow-ui.js')).status,200);});
+test('rejects foreign origins and hosts',async()=>{assert.equal((await req('/api/agent','POST',{agent:'underwriter'},{Origin:'https://example.com'})).status,403);assert.equal((await req('/api/health','GET',null,{Host:'example.com'})).status,403);});
+test('does not serve private files or prototype keys',async()=>{for(const name of ['/.env','/server.js','/../server.js','/__proto__','/constructor'])assert.equal((await req(name)).status,404,name);});
+test('rejects invalid requests without external calls',async()=>{assert.equal((await req('/api/agent','POST',[])).status,400);assert.equal((await req('/api/discover','POST',{provider:'invalid',query:'HVAC'})).status,400);});
+
+test('sourcing assets served and credential files remain private',async()=>{assert.equal((await req('/sourcing.js')).status,200);assert.equal((await req('/sourcing-ui.js')).status,200);for(const p of ['/credential-store.js','/private/brave-key.dpapi'])assert.equal((await req(p)).status,404);});
+test('credential setup rejects foreign origins and invalid keys',async()=>{assert.equal((await req('/api/config/brave','POST',{key:'bad'},{Origin:'https://example.com'})).status,403);const r=await req('/api/config/brave','POST',{key:'bad'});assert.equal(r.status,400);assert.match(r.body,/valid Brave/);});
+test('intelligence module is served and its search retains local-origin restrictions',async()=>{assert.equal((await req('/intelligence.js')).status,200);assert.equal((await req('/intelligence-ui.js')).status,200);assert.equal((await req('/api/intelligence','POST',{industry:'HVAC'},{Origin:'https://example.com'})).status,403);assert.equal((await req('/api/intelligence','POST',[])).status,400);});
+test('filing collector is served; jobs require valid local requests and source code stays private',async()=>{assert.equal((await req('/filings-ui.js')).status,200);for(const file of ['/filings.js','/filing-analysis.js'])assert.equal((await req(file)).status,404);assert.equal((await req('/api/filings/scan','POST',{},{Origin:'https://example.com'})).status,403);assert.equal((await req('/api/filings/scan','POST',{limit:1000})).status,400);assert.equal((await req('/api/filings/jobs/missing')).status,400);});
+test('live model list, health and filing analysis share the saved selection',async()=>{let h=JSON.parse((await req('/api/health')).body);assert.equal(h.ollama.ready,true);assert.equal(h.ollama.models.length,2);assert.equal((await req('/ollama-ui.js')).status,200);assert.equal((await req('/api/ollama')).status,200);const selected=await req('/api/config/ollama','POST',{model:'deepseek-r1:14b'});assert.equal(selected.status,200);h=JSON.parse((await req('/api/health')).body);assert.equal(h.model,'deepseek-r1:14b');const f=JSON.parse((await req('/api/filings/status')).body);assert.equal(f.model,h.model);assert.equal(f.aiReady,true);});
+test('model selection retains local-origin protection and private configuration',async()=>{assert.equal((await req('/api/config/ollama','POST',{model:'deepseek-r1:14b'},{Origin:'https://example.com'})).status,403);assert.equal((await req('/api/config/ollama','POST',{model:'unknown'})).status,400);for(const p of ['/private/ollama.json','/ollama-client.js','/start-ollama.js'])assert.equal((await req(p)).status,404);});
+test('outreach assets are served and contact lookups retain the SEC identifier and origin restrictions',async()=>{
+ for(const asset of ['/outreach.js','/outreach-ui.js'])assert.equal((await req(asset)).status,200);
+ assert.equal((await req('/filing-contacts.js')).status,404);
+ assert.equal((await req('/api/filings/contacts','POST',{cik:'1'},{Origin:'https://example.com'})).status,403);
+ assert.equal((await req('/api/filings/contacts','POST',{cik:'https://untrusted.example'})).status,400);
+});

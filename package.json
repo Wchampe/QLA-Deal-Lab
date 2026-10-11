@@ -1,0 +1,14 @@
+{
+  "name": "qla-deal-lab",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local acquisition research, financing scenarios, specialist agents, and full deal workflow",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test tests/ollama.test.js tests/server.test.js tests/http.test.js tests/workflow.test.js tests/discovery.test.js tests/sourcing.test.js tests/intelligence.test.js tests/filings.test.js tests/outreach.test.js && node tests/finance.test.js",
+    "test:ollama-browser": "node tests/browser-ollama.js",
+    "test:filings-browser": "node tests/browser-filings.js",
+    "test:browser": "node tests/browser-smoke.js"
+  }
+}

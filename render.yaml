@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: qla-deal-lab
+    runtime: node
+    plan: free
+    buildCommand: npm install --ignore-scripts
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: QLA_DISABLE_OLLAMA
+        value: "1"
+      - key: ALLOWED_HOSTS
+        sync: false

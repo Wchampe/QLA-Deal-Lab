@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.env
+private/
+.browser-test/
+tests/*.png
+
+.browser-ranking-test/

@@ -1,0 +1,16 @@
+const assert=require('node:assert/strict');
+const F=require('../finance.js');
+const d={price:1000000,fees:50000,workingCapital:50000,earnings:300000,ownerPay:80000,capex:20000,taxes:20000,wcAnnual:10000,metric:'SDE',evidence:'Unverified'};
+const b={cash:200000,external:1000000,minDscr:1.25};
+const zero=F.loan(120000,0,10);assert.equal(zero.monthly,1000);assert.equal(zero.schedule[9].balance,0);
+const amort=F.loan(100000,10,10);assert.ok(Math.abs(amort.monthly-1321.507)<0.01);assert.equal(amort.schedule[9].balance,0);
+const io=F.loan(100000,8,5,true);assert.ok(Math.abs(io.schedule[0].payment-8000)<0.001);assert.equal(io.schedule[4].balloon,100000);assert.ok(Math.abs(io.schedule[4].payment-108000)<0.001);
+const m=F.analyze(d,F.templates[3],b);assert.equal(m.uses,1100000);assert.ok(Math.abs(m.senior+m.seller+m.equity-m.uses)<1e-6);assert.equal(m.cfads,170000);assert.equal(m.gap,0);
+assert.ok(F.analyze(d,F.templates[3],b,{stress:0.2}).dscr<m.dscr);
+assert.ok(F.analyze(d,F.templates[3],b,{rateShock:2}).annualDebt>m.annualDebt);
+assert.equal(F.analyze(d,F.templates[0],b).dscr,null);
+assert.throws(()=>F.analyze(d,{...F.templates[3],senior:0.9,seller:0.5},b));
+assert.throws(()=>F.analyze({...d,earnings:NaN},F.templates[0],b));
+const balloon=F.analyze(d,F.templates[6],b);assert.ok(balloon.worstDscr<balloon.dscr);assert.ok(balloon.schedule[4].balloon>0);
+assert.ok(F.analyze({...d,price:10000000},F.templates[2],b).warnings.some(x=>x.includes('$5M')));
+console.log('Financial model: 15 assertions passed.');
